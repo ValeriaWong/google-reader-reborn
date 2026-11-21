@@ -9,7 +9,7 @@
 import {
   stripHtml, truncate, escapeHtml, firstSentence, relativeTime,
   articleId, buildSummaryPrompt, parseFeedXml, parseOpml,
-  normalizeRss2JsonItem, isFreshDigest, toISO,
+  normalizeRss2JsonItem, isFreshDigest, toISO, retryAsync,
 } from "../lib.js";
 
 /* ---------- minimal XML test double ---------- */
@@ -128,6 +128,35 @@ const opmlFeeds = parseOpml(OPML_SAMPLE, miniParseXml);
 check("OPML finds nested feeds + dedupes", opmlFeeds.length === 2);
 check("OPML keeps title + url", opmlFeeds[0].title === "HN" && opmlFeeds[0].url === "https://news.ycombinator.com/rss");
 
+/* retryAsync — the retry helper the AI summary transport relies on
+   (direct Pollinations, then the allorigins proxy fallback). */
+{
+  let calls = 0;
+  const flaky = async () => { calls++; return calls < 3 ? { ok: false, status: 500 } : { ok: true, text: "third time" }; };
+  const out = await retryAsync(flaky, 2, [1, 1]);
+  check("retryAsync succeeds on 3rd attempt", out.ok && out.text === "third time" && calls === 3);
+}
+{
+  let calls = 0;
+  const alwaysFail = async () => { calls++; return { ok: false, status: "network" }; };
+  const out = await retryAsync(alwaysFail, 2, [1, 1]);
+  check("retryAsync gives up after retries", !out.ok && out.status === "network" && calls === 3);
+}
+{
+  let calls = 0;
+  const instant = async () => { calls++; return { ok: true, text: "first" }; };
+  const out = await retryAsync(instant, 2, [1, 1]);
+  check("retryAsync does not retry success", out.ok && calls === 1);
+}
+{
+  // A 403 must stop direct retries at once (the Turnstile gate is
+  // deterministic per browser) so the caller can fall back to the proxy.
+  let calls = 0;
+  const gated = async () => { calls++; return { ok: false, status: 403 }; };
+  const out = await retryAsync(gated, 2, [1, 1], (r) => r.ok || r.status === 403);
+  check("retryAsync stops at once on 403", !out.ok && out.status === 403 && calls === 1);
+}
+
 /* ---------- live probes (warn-only) ---------- */
 
 console.log("live probes (warn-only):");
@@ -146,6 +175,11 @@ await probe("rss2json (Hacker News)",
   (t) => { try { return JSON.parse(t).status === "ok"; } catch { return false; } });
 await probe("Pollinations text",
   "https://text.pollinations.ai/Say%20hello%20in%20one%20short%20sentence",
+  (t) => t.trim().length > 0 && !t.trim().startsWith("<"));
+await probe("Pollinations text via allorigins (proxy fallback)",
+  "https://api.allorigins.win/raw?url=" + encodeURIComponent(
+    "https://text.pollinations.ai/" + encodeURIComponent(
+      "Summarize this in one short sentence, no preamble: Title: Test. The quick brown fox jumps over the lazy dog.")),
   (t) => t.trim().length > 0 && !t.trim().startsWith("<"));
 
 console.log(`\noffline: ${passed} passed, ${failed} failed`);

@@ -159,3 +159,22 @@ export function toISO(s) {
   const ms = Date.parse(s || "");
   return Number.isNaN(ms) ? "" : new Date(ms).toISOString();
 }
+
+/** Retry an async fn while it reports failure. `retries` is the number
+    of extra attempts after the first; `delays[i]` is the wait in ms
+    before retry i+1. `isOk` decides success (default: result.ok).
+    Returns the first successful result, or the last result when every
+    attempt failed. Used for the flaky keyless text API. */
+export async function retryAsync(fn, retries, delays, isOk) {
+  const ok = isOk || ((r) => r && r.ok);
+  let last;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    last = await fn(attempt);
+    if (ok(last)) return last;
+    if (attempt < retries) {
+      const wait = (delays && delays[attempt]) || 0;
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  return last;
+}

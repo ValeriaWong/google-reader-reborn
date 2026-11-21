@@ -5,7 +5,7 @@
 import {
   stripHtml, truncate, escapeHtml, firstSentence, relativeTime,
   articleId, buildSummaryPrompt, parseFeedXml, parseOpml,
-  normalizeRss2JsonItem, isFreshDigest, toISO,
+  normalizeRss2JsonItem, isFreshDigest, toISO, retryAsync,
 } from "./lib.js";
 
 /* ============================== Constants ============================== */
@@ -33,6 +33,12 @@ const ALLORIGINS = (url) =>
   `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
 const POLLINATIONS = (prompt) =>
   `https://text.pollinations.ai/${encodeURIComponent(prompt)}`;
+/* Same request routed through allorigins, which fetches Pollinations
+   server-side — no Origin header reaches Pollinations, so its Turnstile
+   gate for browser requests doesn't fire. (codetabs was tried and returns
+   522 from here; not used.) */
+const POLLINATIONS_VIA_ALLORIGINS = (prompt) =>
+  `https://api.allorigins.win/raw?url=${encodeURIComponent(POLLINATIONS(prompt))}`;
 
 /* ============================== Store ============================== */
 
@@ -183,23 +189,78 @@ async function refreshAllFeeds() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** One-line AI summary via the keyless Pollinations text API (cached). */
+/* ------------------------------------------------------------------ */
+/* AI summary transport — keyless Pollinations text API, 30 s timeout, */
+/* plain-text reply. Pollinations is flaky (5xx / empty replies /      */
+/* dropped connections) and gates browser requests: any request        */
+/* carrying an Origin header gets 403 {"error":"Missing Turnstile      */
+/* token"}. So: direct first with retries (stop at once on 403,        */
+/* retrying direct is useless), then the same request via allorigins,  */
+/* which fetches server-side with no Origin header. Mirrors the        */
+/* sibling Clippy project's callLLM.                                   */
+/* ------------------------------------------------------------------ */
+async function summarizeOnce(prompt) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(POLLINATIONS(prompt), { signal: controller.signal });
+    if (!res.ok) return { ok: false, status: res.status };
+    const text = (await res.text()).trim();
+    if (!text || text.startsWith("<")) return { ok: false, status: "bad-response" };
+    return { ok: true, text };
+  } catch (err) {
+    return { ok: false, status: err && err.name === "AbortError" ? "timeout" : "network" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function summarizeOnceViaProxy(prompt) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(POLLINATIONS_VIA_ALLORIGINS(prompt), { signal: controller.signal });
+    if (!res.ok) return { ok: false, status: res.status };
+    const text = (await res.text()).trim();
+    if (!text || text.startsWith("<")) return { ok: false, status: "bad-response" };
+    return { ok: true, text };
+  } catch (err) {
+    return { ok: false, status: err && err.name === "AbortError" ? "timeout" : "network" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function callSummaryAI(prompt) {
+  // Direct first: fast when Pollinations' browser gate is off. A 403 means
+  // the Turnstile gate is on for this browser (it fires on the Origin
+  // header browsers send) — retrying direct is useless, so stop at once
+  // and go to the proxy transport instead.
+  const direct = await retryAsync(
+    () => summarizeOnce(prompt), 2, [700, 1800],
+    (r) => r.ok || r.status === 403
+  );
+  if (direct.ok) return direct;
+  const viaProxy = await retryAsync(() => summarizeOnceViaProxy(prompt), 1, [1000]);
+  return viaProxy.ok ? viaProxy : direct;
+}
+
+/** One-line AI summary via the keyless Pollinations text API (cached).
+    On failure, falls back to the article's first sentence (excerpt). */
 async function summarize(article) {
   const id = articleId(article);
   if (state.summaries[id]) return { text: state.summaries[id], ai: true };
   const prompt = buildSummaryPrompt(article.title, article.description);
-  try {
-    const res = await fetch(POLLINATIONS(prompt));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    let text = (await res.text()).trim().replace(/^["“]|["”]$/g, "");
-    if (!text || text.startsWith("<")) throw new Error("bad response");
-    text = truncate(text, 280);
-    state.summaries[id] = text;
-    saveState();
-    return { text, ai: true };
-  } catch {
-    return { text: firstSentence(article.description) || article.title, ai: false };
+  const res = await callSummaryAI(prompt);
+  if (res.ok) {
+    const text = truncate(res.text.replace(/^["“]|["”]$/g, ""), 280);
+    if (text) {
+      state.summaries[id] = text;
+      saveState();
+      return { text, ai: true };
+    }
   }
+  return { text: firstSentence(article.description) || article.title, ai: false };
 }
 
 /* ============================== Render ============================== */
