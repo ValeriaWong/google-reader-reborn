@@ -302,7 +302,16 @@ function articleCard(a) {
     });
     summary.appendChild(btn);
   }
-  card.append(h, meta, excerpt, summary);
+  const actions = document.createElement("div");
+  actions.className = "card-actions";
+  const toggleBtn = document.createElement("button");
+  toggleBtn.type = "button";
+  toggleBtn.className = "read-toggle";
+  toggleBtn.textContent = isRead ? "○ Mark unread" : "✓ Mark read";
+  toggleBtn.setAttribute("aria-label", (isRead ? "Mark unread: " : "Mark read: ") + a.title);
+  toggleBtn.addEventListener("click", () => toggleRead(id));
+  actions.appendChild(toggleBtn);
+  card.append(h, meta, excerpt, summary, actions);
   return card;
 }
 
@@ -409,6 +418,16 @@ function markRead(id) {
     saveState();
     renderFeeds();
   }
+}
+
+/** Toggle one article read/unread (per-article control on each card).
+    Re-renders everything so the card's unread styling, its button label,
+    and the feed/unread counts all update immediately. */
+function toggleRead(id) {
+  if (state.read[id]) delete state.read[id];
+  else state.read[id] = true;
+  saveState();
+  renderAll();
 }
 
 function removeFeed(feedId) {
