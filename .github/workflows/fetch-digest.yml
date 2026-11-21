@@ -1,0 +1,31 @@
+name: Daily digest snapshot
+
+# Pre-generates data/daily-digest.json once a day so the Digest view works
+# even when live feed APIs are slow. Keyless public APIs only; the only
+# credential is the built-in GITHUB_TOKEN (contents: write).
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # daily at 00:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Generate digest snapshot
+        run: node scripts/fetch-digest.mjs
+      - name: Commit snapshot if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/daily-digest.json
+          git diff --cached --quiet || git commit -m "chore: daily digest snapshot"
+          git push

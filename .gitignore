@@ -1,0 +1,6 @@
+# Reader Reborn — gitignore
+# NOTE: .kiro is intentionally NOT ignored. The Kiroween submission
+# requires /.kiro at the repo root.
+node_modules/
+.DS_Store
+*.log

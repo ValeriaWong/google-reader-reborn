@@ -1,0 +1,1 @@
+{"description":"Reader Reborn — Google Reader revived as an AI-curated RSS reader (Kiroween 2026, Resurrection). No dependencies.","name":"reader-reborn","private":true,"scripts":{"digest":"node scripts/fetch-digest.mjs","test":"node scripts/smoke-test.mjs"},"type":"module","version":"0.1.0"}

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reader Reborn — Google Reader, reborn with AI</title>
+<meta name="description" content="Reader Reborn revives the classic RSS reader: subscribe to feeds, triage headlines, and get a one-line AI summary per article plus a daily digest. Free, no login, your data stays in your browser.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <!-- Original sunrise mark, drawn for this project. Not affiliated with Google. -->
+    <svg class="brand-mark" viewBox="0 0 48 48" width="36" height="36" aria-hidden="true">
+      <circle cx="24" cy="26" r="10" fill="#f08c00"/>
+      <path d="M6 36 H42" stroke="#343a40" stroke-width="3" stroke-linecap="round"/>
+      <path d="M12 42 H36" stroke="#868e96" stroke-width="3" stroke-linecap="round"/>
+      <path d="M24 8 v6 M10 16 l4 4 M38 16 l-4 4" stroke="#f08c00" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>Reader Reborn</h1>
+      <p class="tagline">Google Reader, reborn with AI — free, no login.</p>
+    </div>
+  </div>
+  <nav class="view-tabs" aria-label="Views">
+    <button id="tab-articles" class="tab active" type="button">Articles</button>
+    <button id="tab-digest" class="tab" type="button">Daily Digest</button>
+  </nav>
+  <div class="top-actions">
+    <button id="btn-refresh" type="button" title="Re-fetch all feeds">↻ Refresh</button>
+    <button id="btn-mark-all-read" type="button" title="Mark all visible articles read">✓ Mark all read</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" aria-label="Feeds">
+    <section class="filter-box">
+      <h2>Library</h2>
+      <button id="filter-all" class="filter active" type="button">All articles <span id="count-all" class="count">0</span></button>
+      <button id="filter-unread" class="filter" type="button">Unread <span id="count-unread" class="count">0</span></button>
+    </section>
+
+    <section class="feeds-box">
+      <h2>Feeds <span id="count-feeds" class="count">0</span></h2>
+      <ul id="feed-list" class="feed-list"></ul>
+      <p id="feed-error" class="feed-error" hidden></p>
+    </section>
+
+    <section class="add-box">
+      <h2>Add a feed</h2>
+      <form id="form-add-feed">
+        <label class="visually-hidden" for="input-feed-url">Feed URL</label>
+        <input id="input-feed-url" type="url" placeholder="https://example.com/feed.xml" required>
+        <button type="submit">Add feed</button>
+      </form>
+      <p class="hint">Paste any RSS or Atom feed URL.</p>
+      <div class="opml-row">
+        <label class="opml-label" for="input-opml">Import OPML file</label>
+        <input id="input-opml" type="file" accept=".opml,.xml,text/xml,application/xml">
+      </div>
+      <p id="import-status" class="hint" aria-live="polite"></p>
+    </section>
+
+    <footer class="side-foot">
+      <p>Your feeds, read state, and summaries live only in this browser
+      (localStorage). No account, no backend.</p>
+      <p>Feeds via the keyless rss2json API; summaries via the keyless
+      Pollinations text API. Built for Kiroween 2026.</p>
+    </footer>
+  </aside>
+
+  <main class="main">
+    <section id="view-articles" class="view" aria-label="Articles">
+      <div class="view-head">
+        <h2 id="articles-title">All articles</h2>
+        <p id="articles-status" class="status" aria-live="polite">Loading feeds…</p>
+      </div>
+      <div id="article-list" class="article-list"></div>
+    </section>
+
+    <section id="view-digest" class="view" hidden aria-label="Daily digest">
+      <div class="view-head">
+        <h2>Daily Digest</h2>
+        <p id="digest-status" class="status" aria-live="polite">Loading digest…</p>
+      </div>
+      <div id="digest-list" class="article-list"></div>
+    </section>
+  </main>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
